@@ -1,0 +1,11 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=${prefix}/include
+
+Name: rptadv_rnnoise_adapter
+Description: RNNoise adapter for rpt_advanced
+Version: @VERSION@
+URL: https://github.com/cpeter1207/rptadv-rnnoise-adapter
+Libs: -L${libdir} -lrptadv_rnnoise_adapter
+Cflags: -I${includedir}

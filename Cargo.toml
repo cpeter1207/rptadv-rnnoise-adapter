@@ -1,0 +1,20 @@
+[package]
+name = "rptadv-rnnoise-adapter"
+version = "0.1.0-alpha.1"
+edition = "2024"
+rust-version = "1.85"
+license = "GPL-2.0-only"
+description = "RNNoise adapter for rpt_advanced"
+homepage = "https://github.com/cpeter1207/rptadv-rnnoise-adapter"
+repository = "https://github.com/cpeter1207/rptadv-rnnoise-adapter"
+publish = false
+
+[lib]
+name = "rptadv_rnnoise_adapter"
+crate-type = ["cdylib"]
+
+[profile.release]
+codegen-units = 1
+debug = 1
+lto = "thin"
+panic = "abort"

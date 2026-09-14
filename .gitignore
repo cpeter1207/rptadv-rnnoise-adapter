@@ -1,0 +1,10 @@
+/build/
+/.work/
+/target/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/librptadv-rnnoise-adapter1/
+/debian/librptadv-rnnoise-adapter-dev/
+/debian/tmp/
+/debian/*.substvars

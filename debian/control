@@ -1,0 +1,22 @@
+Source: rptadv-rnnoise-adapter
+Section: libs
+Priority: optional
+Maintainer: Chris Peterson <cpeter1207@users.noreply.github.com>
+Homepage: https://github.com/cpeter1207/rptadv-rnnoise-adapter
+Build-Depends: cargo, debhelper-compat (= 13), librnnoise-dev (>= 0.2), pkg-config, rustc
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+
+Package: librptadv-rnnoise-adapter1
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: RNNoise adapter for rpt_advanced
+ Versioned dynamic RNNoise adapter used by rpt_advanced media components.
+
+Package: librptadv-rnnoise-adapter-dev
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends}, librptadv-rnnoise-adapter1 (= ${binary:Version})
+Description: development files for the rpt_advanced RNNoise adapter
+ Public C header and pkg-config metadata for consumers of the dynamic adapter.

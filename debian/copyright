@@ -1,0 +1,24 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: rptadv-rnnoise-adapter
+Source: https://github.com/cpeter1207/rptadv-rnnoise-adapter
+
+Files: *
+Copyright: 2026 Chris Peterson
+License: GPL-2.0-only
+ This program is free software: you can redistribute it and/or modify it under
+ the terms of the GNU General Public License as published by the Free Software
+ Foundation, version 2 only.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ FOR A PARTICULAR PURPOSE. See the GNU General Public License for details.
+ .
+ On Debian systems, the complete text of the GNU General Public License version
+ 2 can be found in /usr/share/common-licenses/GPL-2.
+
+Files: containers/rnnoise/debian/*
+Copyright: 2017-2022 Xiph.Org Foundation and contributors
+License: BSD-3-clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the conditions in the embedded
+ Debian packaging copyright file are met.
