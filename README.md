@@ -34,6 +34,11 @@ build obtains the official RNNoise 0.2 source archive by pinned checksum and
 installs locally built Debian packages so build dependencies and generated
 runtime dependencies are verified rather than bypassed.
 
+In that quality image, `make release-packages` builds and checks the adapter
+packages and copies the retained RNNoise 0.2 runtime and development packages
+into `build/debian-source/` for the same release. The source archive is built
+by the existing package target.
+
 `make install` installs the versioned shared object, public header, and
 pkg-config metadata. The full public contract is documented in
 [`include/rptadv_rnnoise_adapter/rptadv_rnnoise_adapter.h`](include/rptadv_rnnoise_adapter/rptadv_rnnoise_adapter.h).

@@ -42,6 +42,8 @@ RUN set -eu; \
 	dpkg-buildpackage -us -uc -b; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y \
 		"$work"/librnnoise0_*.deb "$work"/librnnoise-dev_*.deb; \
+	mkdir -p /opt/rptadv-rnnoise-debs; \
+	cp "$work"/librnnoise0_*.deb "$work"/librnnoise-dev_*.deb /opt/rptadv-rnnoise-debs/; \
 	ldconfig; \
 	pkg-config --exact-version="${RNNOISE_VERSION}" rnnoise
 
