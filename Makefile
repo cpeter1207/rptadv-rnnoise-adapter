@@ -15,7 +15,7 @@ PYTHON ?= python3
 
 PACKAGE := rptadv-rnnoise-adapter
 CRATE := rptadv_rnnoise_adapter
-PACKAGE_VERSION ?= 0.1.0-alpha.1
+PACKAGE_VERSION ?= 0.1.0-alpha.2
 SOVERSION := 1
 PREFIX ?= /usr/local
 DESTDIR ?=
@@ -62,7 +62,7 @@ QUALITY_LAUNCHER = tools/run-in-quality-container.sh
 SONAME_RUSTFLAGS = $(RUSTFLAGS) -C link-arg=-Wl,-soname,$(LIBRARY_BASENAME).so.$(SOVERSION)
 
 .PHONY: all quality lint static-analysis docs test coverage install install-check \
-	debian-package-check autopkgtest dist distcheck platform-verify ci quality-image \
+	debian-package-check release-packages autopkgtest dist distcheck platform-verify ci quality-image \
 	container-ci container-coverage clean FORCE
 
 all: $(LIBRARY_VERSIONED) $(LIBRARY_SONAME) $(LIBRARY_LINK)
@@ -197,6 +197,10 @@ debian-package-check: dist
 		-o $(DEBIAN_STAGE)/descriptor-smoke
 	LD_LIBRARY_PATH="$(CURDIR)/$(DEBIAN_STAGE)/usr/lib/$(DEBIAN_MULTIARCH)" \
 		$(DEBIAN_STAGE)/descriptor-smoke
+
+release-packages: debian-package-check
+	cp /opt/rptadv-rnnoise-debs/librnnoise0_*.deb \
+		/opt/rptadv-rnnoise-debs/librnnoise-dev_*.deb $(DEBIAN_OUTPUT_DIR)/
 
 autopkgtest: debian-package-check
 	rm -rf $(AUTOPKGTEST_DIR)
