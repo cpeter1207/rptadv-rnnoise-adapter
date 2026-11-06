@@ -14,3 +14,4 @@ jobs:
     with:
       code_ref: ${{ github.sha }}
       full: ${{ github.event_name != 'push' }}
+      native_docker_socket: true

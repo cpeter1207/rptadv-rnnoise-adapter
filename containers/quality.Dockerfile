@@ -40,7 +40,7 @@ RUN set -eu; \
 	chmod 0755 "$source_dir/debian/rules"; \
 	cd "$source_dir"; \
 	dpkg-buildpackage -us -uc -b; \
-	DEBIAN_FRONTEND=noninteractive apt-get install -y \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades \
 		"$work"/librnnoise0_*.deb "$work"/librnnoise-dev_*.deb; \
 	mkdir -p /opt/rptadv-rnnoise-debs; \
 	cp "$work"/librnnoise0_*.deb "$work"/librnnoise-dev_*.deb /opt/rptadv-rnnoise-debs/; \
