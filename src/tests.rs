@@ -5,13 +5,15 @@ use std::ptr;
 
 use super::{
     AdapterDescriptor, Denoiser, FRAME_COUNT, INVALID_ARGUMENT, OK, RNNOISE_ERROR, SAMPLE_RATE_HZ,
-    UNSUPPORTED, create, create_with_test_functions, destroy, process, valid_probability,
+    UNSUPPORTED, create, create_with_test_functions, destroy, process, reset, valid_probability,
 };
 use crate::ffi::{DenoiseState, FunctionTable, RnnModel};
 
 #[repr(C)]
 struct FakeState {
     process_calls: u32,
+    init_calls: u32,
+    init_result: c_int,
     response: u32,
     model_was_null: bool,
     last_input: [f32; FRAME_COUNT],
@@ -26,8 +28,14 @@ unsafe extern "C" fn wrong_get_frame_size() -> c_int {
 }
 
 unsafe extern "C" fn fake_create(model: *mut RnnModel) -> *mut DenoiseState {
+    LIFECYCLE.with(|counts| {
+        let (creates, destroys) = counts.get();
+        counts.set((creates + 1, destroys));
+    });
     Box::into_raw(Box::new(FakeState {
         process_calls: 0,
+        init_calls: 0,
+        init_result: 0,
         response: 0,
         model_was_null: model.is_null(),
         last_input: [0.0; FRAME_COUNT],
@@ -76,6 +84,10 @@ unsafe extern "C" fn invalid_warmup_process_frame(
 
 unsafe extern "C" fn fake_destroy(state: *mut DenoiseState) {
     if !state.is_null() {
+        LIFECYCLE.with(|counts| {
+            let (creates, destroys) = counts.get();
+            counts.set((creates, destroys + 1));
+        });
         unsafe {
             drop(Box::from_raw(state.cast::<FakeState>()));
         }
@@ -87,6 +99,7 @@ static FAKE_FUNCTIONS: FunctionTable = FunctionTable {
     create: fake_create,
     process_frame: fake_process_frame,
     destroy: fake_destroy,
+    init: fake_init,
 };
 
 static WRONG_FRAME_FUNCTIONS: FunctionTable = FunctionTable {
@@ -94,6 +107,7 @@ static WRONG_FRAME_FUNCTIONS: FunctionTable = FunctionTable {
     create: fake_create,
     process_frame: fake_process_frame,
     destroy: fake_destroy,
+    init: fake_init,
 };
 
 static NULL_CREATE_FUNCTIONS: FunctionTable = FunctionTable {
@@ -101,6 +115,7 @@ static NULL_CREATE_FUNCTIONS: FunctionTable = FunctionTable {
     create: null_create,
     process_frame: fake_process_frame,
     destroy: fake_destroy,
+    init: fake_init,
 };
 
 static INVALID_WARMUP_FUNCTIONS: FunctionTable = FunctionTable {
@@ -108,6 +123,7 @@ static INVALID_WARMUP_FUNCTIONS: FunctionTable = FunctionTable {
     create: fake_create,
     process_frame: invalid_warmup_process_frame,
     destroy: fake_destroy,
+    init: fake_init,
 };
 
 fn fake_denoiser() -> *mut Denoiser {
@@ -383,4 +399,112 @@ fn production_descriptor_processes_one_real_silent_frame() {
     assert!(output.iter().all(|sample| sample.is_finite()));
     destroy(denoiser);
     destroy(ptr::null_mut());
+}
+
+thread_local! {
+    static LIFECYCLE: std::cell::Cell<(u32, u32)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+unsafe extern "C" fn fake_init(state: *mut DenoiseState, model: *mut RnnModel) -> c_int {
+    let state = unsafe { &mut *state.cast::<FakeState>() };
+    state.init_calls += 1;
+    state.model_was_null = model.is_null();
+    state.last_input.fill(0.0);
+    state.init_result
+}
+
+#[test]
+fn reset_preserves_handle_without_processing() {
+    let denoiser = fake_denoiser();
+    let upstream = unsafe { (*denoiser).state };
+    let lifecycle = LIFECYCLE.with(|counts| counts.get());
+    for expected in 1..=3 {
+        assert_eq!(reset(denoiser), OK);
+        let current = unsafe { &*denoiser };
+        assert_eq!(current.state, upstream);
+        assert_eq!(fake_state(current).init_calls, expected);
+        assert_eq!(fake_state(current).process_calls, 2);
+        assert!(fake_state(current).model_was_null);
+        assert_eq!(LIFECYCLE.with(|counts| counts.get()), lifecycle);
+    }
+    destroy(denoiser);
+}
+
+#[test]
+fn reset_clears_scratch_and_default_model_history() {
+    let denoiser = fake_denoiser();
+    let input = [0.25; FRAME_COUNT];
+    let mut output = [0.0; FRAME_COUNT];
+    let mut probability = 0.0;
+    assert_eq!(
+        process(
+            denoiser,
+            input.as_ptr(),
+            FRAME_COUNT as u32,
+            output.as_mut_ptr(),
+            &mut probability
+        ),
+        OK
+    );
+    assert_eq!(reset(denoiser), OK);
+    let current = unsafe { &*denoiser };
+    assert!(current.input_codes.iter().all(|v| *v == 0.0));
+    assert!(current.output_codes.iter().all(|v| *v == 0.0));
+    assert!(fake_state(current).last_input.iter().all(|v| *v == 0.0));
+    assert!(fake_state(current).model_was_null);
+    assert_eq!(fake_state(current).process_calls, 3);
+    destroy(denoiser);
+}
+
+#[test]
+fn reset_rejects_null_and_reports_init_failure() {
+    assert_eq!(reset(ptr::null_mut()), INVALID_ARGUMENT);
+    let denoiser = fake_denoiser();
+    fake_state_mut(unsafe { &mut *denoiser }).init_result = -1;
+    assert_eq!(reset(denoiser), RNNOISE_ERROR);
+    fake_state_mut(unsafe { &mut *denoiser }).init_result = 1;
+    assert_eq!(reset(denoiser), RNNOISE_ERROR);
+    destroy(denoiser);
+}
+
+#[test]
+fn reset_failure_blocks_process_until_success() {
+    let denoiser = fake_denoiser();
+    fake_state_mut(unsafe { &mut *denoiser }).init_result = -1;
+    let lifecycle = LIFECYCLE.with(|counts| counts.get());
+    assert_eq!(reset(denoiser), RNNOISE_ERROR);
+    let input = [0.25; FRAME_COUNT];
+    let mut output = [9.0; FRAME_COUNT];
+    let mut probability = 9.0;
+    for _ in 0..2 {
+        assert_eq!(
+            process(
+                denoiser,
+                input.as_ptr(),
+                FRAME_COUNT as u32,
+                output.as_mut_ptr(),
+                &mut probability
+            ),
+            RNNOISE_ERROR
+        );
+        assert_eq!(probability, 0.0);
+        assert_eq!(output, [9.0; FRAME_COUNT]);
+        assert_eq!(fake_state(unsafe { &*denoiser }).process_calls, 2);
+    }
+    fake_state_mut(unsafe { &mut *denoiser }).init_result = 0;
+    assert_eq!(reset(denoiser), OK);
+    assert_eq!(
+        process(
+            denoiser,
+            input.as_ptr(),
+            FRAME_COUNT as u32,
+            output.as_mut_ptr(),
+            &mut probability
+        ),
+        OK
+    );
+    assert_eq!(probability, 0.625);
+    assert_eq!(output, [0.125; FRAME_COUNT]);
+    assert_eq!(LIFECYCLE.with(|counts| counts.get()), lifecycle);
+    destroy(denoiser);
 }

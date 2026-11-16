@@ -52,6 +52,7 @@ pub struct Denoiser {
     functions: &'static ffi::FunctionTable,
     input_codes: [f32; FRAME_COUNT],
     output_codes: [f32; FRAME_COUNT],
+    initialized: bool,
 }
 
 impl Drop for Denoiser {
@@ -72,6 +73,7 @@ pub struct AdapterDescriptor {
     create: extern "C" fn(u32, u32, u32, *mut *mut Denoiser) -> c_int,
     process: extern "C" fn(*mut Denoiser, *const f32, u32, *mut f32, *mut f32) -> c_int,
     destroy: extern "C" fn(*mut Denoiser),
+    reset: extern "C" fn(*mut Denoiser) -> c_int,
 }
 
 // The descriptor contains only immutable pointers to static code and storage.
@@ -130,6 +132,7 @@ fn create_with_functions(
         functions,
         input_codes: [0.0; FRAME_COUNT],
         output_codes: [0.0; FRAME_COUNT],
+        initialized: true,
     });
     for _ in 0..WARMUP_FRAME_COUNT {
         if run_frame(&mut denoiser).is_err() {
@@ -180,6 +183,9 @@ extern "C" fn process(
         return INVALID_ARGUMENT;
     }
     let denoiser = unsafe { denoiser.as_mut() };
+    if !denoiser.initialized {
+        return RNNOISE_ERROR;
+    }
     {
         let input = unsafe { slice::from_raw_parts(input, FRAME_COUNT) };
         for (codes, sample) in denoiser.input_codes.iter_mut().zip(input) {
@@ -196,6 +202,25 @@ extern "C" fn process(
     unsafe {
         *out_vad_probability.as_ptr() = probability;
     }
+    OK
+}
+
+/// Reset default-model history and scratch in place, without processing PCM.
+///
+/// A failed initialization blocks processing until a later reset succeeds.
+/// Callers serialize reset with processing and destruction of this handle.
+extern "C" fn reset(denoiser: *mut Denoiser) -> c_int {
+    let Some(mut denoiser) = NonNull::new(denoiser) else {
+        return INVALID_ARGUMENT;
+    };
+    let denoiser = unsafe { denoiser.as_mut() };
+    denoiser.initialized = false;
+    denoiser.input_codes.fill(0.0);
+    denoiser.output_codes.fill(0.0);
+    if unsafe { (denoiser.functions.init)(denoiser.state.as_ptr(), ptr::null_mut()) } != 0 {
+        return RNNOISE_ERROR;
+    }
+    denoiser.initialized = true;
     OK
 }
 
@@ -217,6 +242,7 @@ static DESCRIPTOR: AdapterDescriptor = AdapterDescriptor {
     create,
     process,
     destroy,
+    reset,
 };
 
 /// Return the immutable function table for ABI version one.

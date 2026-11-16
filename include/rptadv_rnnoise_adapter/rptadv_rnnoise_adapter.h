@@ -51,7 +51,7 @@ struct rptadv_rnnoise_denoiser;
  * Consumers verify the capability string, exact ABI version, minimum readable
  * descriptor prefix, and every required function pointer before using this
  * table. Creation and destruction are control-plane operations. @ref process
- * is the only real-time operation.
+ * and the optional appended @ref reset are serialized real-time operations.
  */
 struct rptadv_rnnoise_adapter_descriptor {
 	/** Size of this descriptor, enabling compatible append-only extension. */
@@ -111,6 +111,24 @@ struct rptadv_rnnoise_adapter_descriptor {
 	 * @param denoiser Denoiser obtained from @ref create, or null.
 	 */
 	void (*destroy)(struct rptadv_rnnoise_denoiser *denoiser);
+	/**
+	 * @brief Clear all default-model history and scratch, preserving ownership.
+	 *
+	 * @param denoiser Denoiser obtained from @ref create.
+	 * @return OK, INVALID_ARGUMENT for null, or RNNOISE_ERROR on init failure.
+	 *
+	 * Require struct_size >= RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_RESET_MIN_SIZE
+	 * before reading this appended pointer, then require a nonnull pointer.
+	 * The caller serializes reset with process and destroy. Reset is bounded,
+	 * allocation/free/lock/I/O/log-free for the qualified RNNoise 0.2 default
+	 * model. It processes no PCM, produces no observation, and has no warmup.
+	 * After failure, process returns RNNOISE_ERROR without publishing output
+	 * (and clears a valid probability destination) until reset succeeds.
+	 * Destruction remains valid after failure. No custom models are supported.
+	 * Reset is explicit analysis policy, never an automatic programme bypass.
+	 */
+	enum rptadv_rnnoise_adapter_result (*reset)(
+		struct rptadv_rnnoise_denoiser *denoiser);
 };
 
 /**
@@ -123,6 +141,11 @@ struct rptadv_rnnoise_adapter_descriptor {
 #define RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_V1_MIN_SIZE \
 	(offsetof(struct rptadv_rnnoise_adapter_descriptor, destroy) + \
 	 sizeof(((struct rptadv_rnnoise_adapter_descriptor *)0)->destroy))
+
+/** @brief Minimum readable descriptor size for the appended reset operation. */
+#define RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_RESET_MIN_SIZE \
+	(offsetof(struct rptadv_rnnoise_adapter_descriptor, reset) + \
+	 sizeof(((struct rptadv_rnnoise_adapter_descriptor *)0)->reset))
 
 /*
  * Public enum parameters use the platform C-int ABI. Reject compilation modes

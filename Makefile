@@ -36,6 +36,8 @@ PC_TEMPLATE := rptadv_rnnoise_adapter.pc.in
 PC_FILE := build/rptadv_rnnoise_adapter.pc
 C_SMOKE_SOURCE := tests/descriptor_smoke.c
 C_SMOKE_BINARY := build/descriptor-smoke
+C_GUARD_SOURCE := tests/reset_allocation_guard.c
+C_GUARD_BINARY := build/reset-allocation-guard
 SHELL_SCRIPTS := tools/run-in-quality-container.sh debian/tests/install-check
 DEBIAN_VERSION = $(shell dpkg-parsechangelog -S Version)
 DEBIAN_ARCH = $(shell dpkg-architecture -qDEB_HOST_ARCH)
@@ -95,9 +97,9 @@ lint:
 static-analysis:
 	$(CARGO_CLIPPY) --all-targets --all-features -- -D warnings
 	$(CPPCHECK) --force --enable=warning,style,performance,portability \
-		--check-level=exhaustive --error-exitcode=1 --std=c11 -Iinclude $(C_SMOKE_SOURCE)
+		--check-level=exhaustive --error-exitcode=1 --std=c11 -Iinclude $(C_SMOKE_SOURCE) $(C_GUARD_SOURCE)
 	$(CLANG_TIDY) -checks='clang-diagnostic-*,clang-analyzer-*' \
-		-warnings-as-errors='*' $(C_SMOKE_SOURCE) -- -std=c11 -Iinclude
+		-warnings-as-errors='*' $(C_SMOKE_SOURCE) $(C_GUARD_SOURCE) -- -std=c11 -Iinclude
 
 $(RUST_DOXYGEN_INPUT): $(RUST_DOXYGEN_GENERATOR) $(RUST_PRODUCTION_SOURCES) | build
 	$(PYTHON) $(RUST_DOXYGEN_GENERATOR) $@ $(RUST_PRODUCTION_SOURCES)
@@ -110,10 +112,16 @@ test: all
 	$(CARGO) test --all-targets --locked
 	$(MAKE) $(C_SMOKE_BINARY)
 	./$(C_SMOKE_BINARY)
+	$(MAKE) $(C_GUARD_BINARY)
+	LD_BIND_NOW=1 ./$(C_GUARD_BINARY)
 
 $(C_SMOKE_BINARY): $(C_SMOKE_SOURCE) $(HEADER) $(LIBRARY_LINK) | build
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude $< -Lbuild \
 		-l$(CRATE) -Wl,-rpath,'$$ORIGIN' -o $@
+
+$(C_GUARD_BINARY): $(C_GUARD_SOURCE) $(HEADER) $(LIBRARY_LINK) | build
+	$(CC) -std=c11 -Wall -Wextra -Werror -fno-builtin -Wl,--export-dynamic \
+		-Iinclude $< -Lbuild -l$(CRATE) -Wl,-rpath,'$$ORIGIN' -o $@
 
 coverage:
 	rm -rf $(COVERAGE_DIR) $(COVERAGE_TARGET_DIR)
@@ -162,7 +170,7 @@ install-check: all
 			PKG_CONFIG_SYSROOT_DIR="$(CURDIR)/build/stage" \
 			pkg-config --cflags --libs rptadv_rnnoise_adapter) \
 		-Wl,-rpath,'$$ORIGIN/usr/lib' -o build/stage/descriptor-smoke
-	LD_LIBRARY_PATH="$(CURDIR)/build/stage/usr/lib" build/stage/descriptor-smoke
+	LD_LIBRARY_PATH="$(CURDIR)/build/stage/usr/lib:$${LD_LIBRARY_PATH:-}" build/stage/descriptor-smoke
 
 debian-package-check: dist
 	rm -rf $(DEBIAN_SOURCE_PARENT) $(DEBIAN_STAGE)

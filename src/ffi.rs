@@ -24,6 +24,7 @@ pub(crate) struct FunctionTable {
     pub(crate) create: unsafe extern "C" fn(*mut RnnModel) -> *mut DenoiseState,
     pub(crate) process_frame: unsafe extern "C" fn(*mut DenoiseState, *mut f32, *const f32) -> f32,
     pub(crate) destroy: unsafe extern "C" fn(*mut DenoiseState),
+    pub(crate) init: unsafe extern "C" fn(*mut DenoiseState, *mut RnnModel) -> c_int,
 }
 
 #[link(name = "rnnoise", kind = "dylib")]
@@ -41,6 +42,9 @@ unsafe extern "C" {
         output: *mut f32,
         input: *const f32,
     ) -> f32;
+    /// Reinitialize existing upstream state using the default model.
+    #[link_name = "rnnoise_init"]
+    fn rnnoise_init_native(state: *mut DenoiseState, model: *mut RnnModel) -> c_int;
     /// Release an upstream denoiser.
     #[link_name = "rnnoise_destroy"]
     fn rnnoise_destroy_native(state: *mut DenoiseState);
@@ -70,10 +74,16 @@ unsafe extern "C" fn production_destroy(state: *mut DenoiseState) {
     unsafe { rnnoise_destroy_native(state) }
 }
 
+/// Invoke production RNNoise in-place initialization.
+unsafe extern "C" fn production_init(state: *mut DenoiseState, model: *mut RnnModel) -> c_int {
+    unsafe { rnnoise_init_native(state, model) }
+}
+
 /// Function table used by the exported production descriptor.
 pub(crate) static PRODUCTION_FUNCTIONS: FunctionTable = FunctionTable {
     get_frame_size: production_get_frame_size,
     create: production_create,
     process_frame: production_process_frame,
     destroy: production_destroy,
+    init: production_init,
 };

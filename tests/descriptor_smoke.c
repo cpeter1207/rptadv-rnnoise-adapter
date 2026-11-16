@@ -9,6 +9,14 @@
 
 #include "rptadv_rnnoise_adapter/rptadv_rnnoise_adapter.h"
 
+/* Check the advertised size before touching the appended field, even if
+ * adjacent readable bytes happen to contain a non-null reset pointer. */
+static int has_reset(const struct rptadv_rnnoise_adapter_descriptor *d)
+{
+    return d->struct_size >= RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_RESET_MIN_SIZE &&
+           d->reset != NULL;
+}
+
 int main(void)
 {
 	const struct rptadv_rnnoise_adapter_descriptor *descriptor;
@@ -36,7 +44,27 @@ int main(void)
 				   &vad_probability) == RPTADV_RNNOISE_ADAPTER_OK);
 	assert(isfinite(vad_probability));
 	assert(vad_probability >= 0.0F && vad_probability <= 1.0F);
-	descriptor->destroy(denoiser);
+    assert(has_reset(descriptor));
+    struct rptadv_rnnoise_adapter_descriptor short_descriptor = *descriptor;
+    short_descriptor.struct_size = RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_V1_MIN_SIZE;
+    assert(!has_reset(&short_descriptor));
+    short_descriptor.struct_size = RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_RESET_MIN_SIZE - 1;
+    assert(!has_reset(&short_descriptor));
+    short_descriptor.struct_size = RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_RESET_MIN_SIZE;
+    short_descriptor.reset = NULL;
+    assert(!has_reset(&short_descriptor));
+    assert(RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_V1_MIN_SIZE ==
+           offsetof(struct rptadv_rnnoise_adapter_descriptor, reset));
+    assert(descriptor->reset(NULL) == RPTADV_RNNOISE_ADAPTER_INVALID_ARGUMENT);
+    for (unsigned i = 0; i < RPTADV_RNNOISE_FRAME_COUNT; ++i)
+        samples[i] = ((float)(i % 29) - 14.0F) / 32.0F;
+    assert(descriptor->process(denoiser, samples, RPTADV_RNNOISE_FRAME_COUNT,
+                               samples, &vad_probability) == 0);
+    assert(descriptor->reset(denoiser) == 0);
+    assert(descriptor->process(denoiser, samples, RPTADV_RNNOISE_FRAME_COUNT,
+                               samples, &vad_probability) == 0);
+    assert(isfinite(vad_probability));
+    descriptor->destroy(denoiser);
 	descriptor->destroy(NULL);
 	return 0;
 }

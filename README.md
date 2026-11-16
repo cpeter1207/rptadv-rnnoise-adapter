@@ -15,9 +15,14 @@ static-links it.
 
 Callback partition assembly and USBRadioPlus's two-live-frame output priming
 remain consumer-owned because they are stream policy rather than RNNoise API.
-ABI v1 deliberately has no reset entry. Current bypass behavior clears only
-consumer framing state and retains upstream RNNoise history; reinitializing
-the model would change that behavior.
+ABI v1 appends an explicit analysis-history `reset` entry after the unchanged
+create/process/destroy prefix. Consumers must check
+`RPTADV_RNNOISE_ADAPTER_DESCRIPTOR_RESET_MIN_SIZE` before reading it and reject
+missing reset support during setup if needed. Reset retains handle ownership,
+clears history and scratch, and processes no synthetic PCM or warmup frames.
+A failed reset blocks processing until a successful retry (or control-plane
+replacement). Current programme bypass still clears only consumer framing
+state and retains upstream history; it must not call reset.
 
 The public descriptor is selected by
 `RPTADV_RNNOISE_ADAPTER_CAPABILITY`. Consumers verify that name, the exact ABI
@@ -44,3 +49,7 @@ pkg-config metadata. The full public contract is documented in
 [`include/rptadv_rnnoise_adapter/rptadv_rnnoise_adapter.h`](include/rptadv_rnnoise_adapter/rptadv_rnnoise_adapter.h).
 `make docs` also checks every documented production Rust declaration and
 publishes its complete implementation context through Doxygen.
+
+This reset extension is an unreleased source candidate, not a capability of
+released alpha.2. The first qualified package floor is pending a reviewed
+candidate identity and the native/package/coverage gates in QUALITY.md.
